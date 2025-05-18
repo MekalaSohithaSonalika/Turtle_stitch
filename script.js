@@ -501,7 +501,7 @@ animateButton.addEventListener('click', () => {
     animationActive = false; // Ensure the flag is false
 
     if (wordToAnimate.length === 0) {
-        messageDiv.textContent = 'Please enter supported characters (A-F) to animate.';
+        messageDiv.textContent = 'Please enter supported characters (A-F) to stitch.';
         ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
         completedCharacters = []; // Clear any previous completed chars
         wordScaleFactor = 1; // Reset word scale
