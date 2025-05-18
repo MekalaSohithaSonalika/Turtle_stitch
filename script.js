@@ -420,7 +420,7 @@ function drawPath(points, xOffset) {
 
 // --- Animation Loop ---
 let lastTimestamp = 0;
-const ANIMATION_INTERVAL_MS = 10; // Corresponds to `interval=20` in Python code (50 FPS)
+const ANIMATION_INTERVAL_MS = 5; // Corresponds to `interval=20` in Python code (50 FPS)
 
 /**
  * The main animation loop.
