@@ -420,7 +420,7 @@ function drawPath(points, xOffset) {
 
 // --- Animation Loop ---
 let lastTimestamp = 0;
-const ANIMATION_INTERVAL_MS = 20; // Corresponds to `interval=20` in Python code (50 FPS)
+const ANIMATION_INTERVAL_MS = 10; // Corresponds to `interval=20` in Python code (50 FPS)
 
 /**
  * The main animation loop.
@@ -461,7 +461,7 @@ function animate(timestamp) {
                 processedPointsForCurrentChar = [];
 
                 if (currentWordCharIndex < wordToAnimate.length) {
-                    messageDiv.textContent = `Animating: '${wordToAnimate}' - Current char: '${wordToAnimate[currentWordCharIndex]}'`;
+                    messageDiv.textContent = `Stitching: '${wordToAnimate}' - Current char: '${wordToAnimate[currentWordCharIndex]}'`;
                     // Prepare data for the next character immediately
                     prepareAnimationForCharacter(wordToAnimate[currentWordCharIndex]);
                 } else {
@@ -523,7 +523,7 @@ animateButton.addEventListener('click', () => {
     if (unsupportedCharsEntered.length > 0) {
         messageDiv.textContent = `Warning: Chars '${unsupportedCharsEntered.join(', ')}' not defined. Animating: ${wordToAnimate}`;
     } else {
-        messageDiv.textContent = `Animating: ${wordToAnimate}`;
+        messageDiv.textContent = `Stitching: ${wordToAnimate}`;
     }
 
     // Reset all animation state variables for a new word
