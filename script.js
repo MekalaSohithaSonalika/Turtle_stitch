@@ -564,5 +564,5 @@ window.addEventListener('resize', () => {
 // Call updateCanvasDimensions once on page load to set initial size and scale
 window.onload = () => {
     updateCanvasDimensions();
-    messageDiv.textContent = 'Enter characters (A-F) to animate.';
+    messageDiv.textContent = 'Enter characters (A-F) to stitch.';
 };
