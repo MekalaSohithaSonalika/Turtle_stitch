@@ -3,43 +3,144 @@
 const canvas = document.getElementById('patternCanvas');
 const ctx = canvas.getContext('2d');
 
-// --- Canvas Setup ---
-const CANVAS_SIZE = 600; // You can adjust this value. It's the maximum dimension.
-canvas.width = CANVAS_SIZE;
-canvas.height = CANVAS_SIZE;
-
+// --- Data Coordinate System ---
+// These define the logical bounds of our drawing space, independent of pixel size.
 const X_MIN = -0.5;
 const X_MAX = 10;
 const Y_MIN = -0.5;
 const Y_MAX = 10;
 
-const DATA_RANGE_X = X_MAX - X_MIN;
-const DATA_RANGE_Y = Y_MAX - Y_MIN;
-
-const SCALE_X = CANVAS_SIZE / DATA_RANGE_X;
-const SCALE_Y = CANVAS_SIZE / DATA_RANGE_Y;
+const DATA_RANGE_X = X_MAX - X_MIN; // Total width of data: 10 - (-0.5) = 10.5
+const DATA_RANGE_Y = Y_MAX - Y_MIN; // Total height of data: 10 - (-0.5) = 10.5
 
 // Define the effective width of a character in data units for horizontal spacing.
-// The 'A' pattern draws from x=0 to x=6. Setting this to 7 gives 1 unit of space between characters.
 const CHAR_WIDTH_DATA_UNITS = 7;
 
-// --- Dynamic Scaling Factor for the Entire Word ---
-// This factor will be adjusted based on the length of the word to ensure it fits the canvas.
-let wordScaleFactor = 1;
+// --- Size Multiplier ---
+// Increase this value to make the letters larger.
+const SIZE_MULTIPLIER = 1.8; // Increased size further (adjust as needed)
+
+
+// --- Dynamic Scaling and Offset Variables ---
+let currentCanvasWidth = 0;
+let currentCanvasHeight = 0;
+let baseScale = 0; // Base scale factor based on the minimum canvas dimension
+let wordScaleFactor = 1; // Additional scale factor for the word if it's too long
+
+// Pixel offsets for centering the entire scaled word block on the canvas
+let centerXOffsetPixels = 0;
+let centerYOffsetPixels = 0;
+
+
+/**
+ * Updates canvas dimensions and recalculates scaling/offset based on current client size.
+ * This should be called on initial load and on window resize.
+ */
+function updateCanvasDimensions() {
+    // Get the actual rendered size of the canvas element from CSS
+    currentCanvasWidth = canvas.clientWidth;
+    currentCanvasHeight = canvas.clientHeight;
+
+    // Set the canvas's internal drawing buffer size to match its display size
+    // This prevents blurring on high-density displays
+    canvas.width = currentCanvasWidth;
+    canvas.height = currentCanvasHeight;
+
+    // --- Calculate the base scale factor based on the minimum canvas dimension ---
+    // This scale factor ensures the core character shape fits within the smaller
+    // dimension of the canvas while maintaining its aspect ratio.
+    const availableCanvasMinDimension = Math.min(currentCanvasWidth, currentCanvasHeight);
+    const dataMaxDimension = Math.max(DATA_RANGE_X, DATA_RANGE_Y); // Assume character fits in a square data space
+
+    // Avoid division by zero if canvas dimensions are 0
+    if (availableCanvasMinDimension === 0 || dataMaxDimension === 0) {
+        baseScale = 0;
+    } else {
+        // The baseScale is how many pixels per data unit based on the smaller canvas dimension.
+        // We apply the SIZE_MULTIPLIER here to make the base character size larger.
+        baseScale = (availableCanvasMinDimension / dataMaxDimension) * SIZE_MULTIPLIER;
+    }
+
+    // Recalculate scaling and centering for the current word based on the new canvas size
+    if (wordToAnimate) {
+        calculateWordScalingAndOffset(wordToAnimate);
+    } else {
+        // Reset scaling and offset if no word is set
+        wordScaleFactor = 1;
+        centerXOffsetPixels = 0;
+        centerYOffsetPixels = 0;
+    }
+
+    // Redraw the current state after resizing
+    // Use requestAnimationFrame for redrawing after resize to avoid tearing during rapid resizing
+    requestAnimationFrame(redrawCanvasContent);
+}
+
+
+/**
+ * Calculates the wordScaleFactor and pixel offsets needed to center the word
+ * within the current canvas dimensions, maintaining aspect ratio.
+ * @param {string} word - The word to be animated.
+ */
+function calculateWordScalingAndOffset(word) {
+    // Calculate the total width needed for the word in data units without additional word scaling
+    const unscaledRequiredDataWidth = word.length * CHAR_WIDTH_DATA_UNITS;
+    const unscaledRequiredDataHeight = DATA_RANGE_Y; // Height is constant for all characters
+
+    // Calculate the pixel dimensions the word would take with only the baseScale applied
+    const baseScaledPixelWidth = unscaledRequiredDataWidth * baseScale;
+    const baseScaledPixelHeight = unscaledRequiredDataHeight * baseScale;
+
+    // Determine the additional word scaling factor needed to fit the word into the canvas
+    // This factor is applied *on top of* the baseScale.
+    let widthFitFactor = 1;
+    if (baseScaledPixelWidth > currentCanvasWidth) {
+        widthFitFactor = (currentCanvasWidth / baseScaledPixelWidth) * 0.95; // Leave a small margin
+    }
+
+    let heightFitFactor = 1;
+     if (baseScaledPixelHeight > currentCanvasHeight) {
+         heightFitFactor = (currentCanvasHeight / baseScaledPixelHeight) * 0.95; // Leave a small margin
+     }
+
+     // The wordScaleFactor is the minimum of the width and height fit factors
+     // to ensure the entire word fits within the canvas bounds.
+     wordScaleFactor = Math.min(widthFitFactor, heightFitFactor);
+
+
+    // Calculate the final scaled pixel dimensions of the entire word block
+    const finalScaledPixelWidth = baseScaledPixelWidth * wordScaleFactor;
+    const finalScaledPixelHeight = baseScaledPixelHeight * wordScaleFactor;
+
+    // Calculate the pixel offsets needed to center the final scaled word block on the canvas.
+    centerXOffsetPixels = (currentCanvasWidth - finalScaledPixelWidth) / 2;
+    centerYOffsetPixels = (currentCanvasHeight - finalScaledPixelHeight) / 2;
+}
+
 
 /**
  * Transforms a point from a character's local data coordinates to canvas coordinates,
- * applying a horizontal offset for its position in the word AND a global scaling factor.
+ * applying character offset, the base scale factor, word scale factor,
+ * and final pixel centering offsets.
  * @param {number} dataX - X coordinate in the character's local data space (e.g., 0-6 for 'A').
  * @param {number} dataY - Y coordinate in the data space.
- * @param {number} charXOffsetDataUnits - Horizontal offset for the character in data units.
+ * @param {number} charXOffsetDataUnits - Horizontal offset for the character in data units (based on its position in the word).
  * @returns {{x: number, y: number}} - Object with canvas X and Y coordinates.
  */
 function transformPoint(dataX, dataY, charXOffsetDataUnits = 0) {
+    // Apply character offset in data units
     const transformedDataX = dataX + charXOffsetDataUnits;
-    // Apply wordScaleFactor to both X and Y dimensions after base scaling
-    const canvasX = (transformedDataX - X_MIN) * SCALE_X * wordScaleFactor;
-    const canvasY = CANVAS_SIZE - ((dataY - Y_MIN) * SCALE_Y * wordScaleFactor);
+    const transformedDataY = dataY; // Y coordinate is relative to the character's base line
+
+    // Scale the point using the baseScale and wordScaleFactor, relative to the data origin (X_MIN, Y_MIN)
+    // The baseScale already includes the SIZE_MULTIPLIER.
+    const scaledX = (transformedDataX - X_MIN) * baseScale * wordScaleFactor;
+    const scaledY = (transformedDataY - Y_MIN) * baseScale * wordScaleFactor;
+
+    // Apply the pixel offsets for centering and adjust for the canvas's top-left origin
+    const canvasX = scaledX + centerXOffsetPixels;
+    const canvasY = currentCanvasHeight - (scaledY + centerYOffsetPixels); // Invert Y-axis for canvas
+
     return { x: canvasX, y: canvasY };
 }
 
@@ -211,16 +312,14 @@ const CHARACTER_DRAWING_DATA = {
 
 
 // --- Animation State Variables ---
-let wordToAnimate = '';             // The word entered by the user (e.g., "AAAA")
-let currentWordCharIndex = 0;       // Index of the character currently being animated in the word
-// This will now be a single flattened array of all points for the current character
+let wordToAnimate = '';
+let currentWordCharIndex = 0;
 let processedPointsForCurrentChar = [];
-let totalFramesForCurrentChar = 0;      // Total frames for the current character's animation (equals number of points)
-let currentFrame = 0;               // Current frame within the current character's animation
-let animationActive = false;        // Flag to control if the animation loop is running
+let totalFramesForCurrentChar = 0;
+let currentFrame = 0;
+let animationActive = false;
+let animationFrameId = null;
 
-// This array stores the complete drawing data for characters that have finished animating.
-// Each item will be an object: { char: 'A', processedPoints: [...], xOffset: N }
 let completedCharacters = [];
 
 // --- DOM Elements ---
@@ -270,13 +369,44 @@ function prepareAnimationForCharacter(char) {
     return true;
 }
 
+/**
+ * Draws the content on the canvas. This includes completed characters and the current animating character.
+ * This function is called by the animation loop and the resize handler.
+ */
+function redrawCanvasContent() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas completely
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'black';
+
+    // 1. Draw all characters that have already finished animating.
+    for (const completedCharData of completedCharacters) {
+        drawPath(completedCharData.processedPoints, completedCharData.xOffset);
+    }
+
+    // 2. Draw the current character's partial animation if animation is active
+    if (animationActive && currentWordCharIndex < wordToAnimate.length) {
+        const currentChar = wordToAnimate[currentWordCharIndex];
+        const currentXOffsetDataUnits = currentWordCharIndex * CHAR_WIDTH_DATA_UNITS;
+
+         // Prepare animation data if needed (should usually be done before animation starts)
+         // This check is mostly a safeguard.
+        if (processedPointsForCurrentChar.length === 0) {
+             prepareAnimationForCharacter(currentChar);
+        }
+
+        const pointsToDrawForCurrentChar = processedPointsForCurrentChar.slice(0, currentFrame + 1);
+        drawPath(pointsToDrawForCurrentChar, currentXOffsetDataUnits);
+    }
+}
+
+
 // --- Helper to Draw a Path ---
 // This function draws a sequence of points.
 function drawPath(points, xOffset) {
     if (points.length < 2) return; // Need at least two points to draw a line
 
     ctx.beginPath(); // Start a new path
-    // Move to the first point, applying the character's offset and global word scale
+    // Move to the first point, applying the character's offset and global word offset
     const startPoint = transformPoint(points[0][0], points[0][1], xOffset);
     ctx.moveTo(startPoint.x, startPoint.y);
 
@@ -294,13 +424,14 @@ const ANIMATION_INTERVAL_MS = 20; // Corresponds to `interval=20` in Python code
 
 /**
  * The main animation loop.
- * This function clears the canvas, redraws all completed characters,
- * and then draws the current animating character's progress as a continuous stroke.
+ * Handles frame progression and transitions between characters.
+ * Drawing is delegated to redrawCanvasContent().
  * @param {DOMHighResTimeStamp} timestamp - The current time provided by requestAnimationFrame.
  */
 function animate(timestamp) {
     if (!animationActive) {
-        return; // Stop looping if animation is not active
+        animationFrameId = null; // Clear the animation frame ID if animation stops
+        return;
     }
 
     const deltaTime = timestamp - lastTimestamp;
@@ -308,77 +439,51 @@ function animate(timestamp) {
     if (deltaTime >= ANIMATION_INTERVAL_MS) {
         lastTimestamp = timestamp - (deltaTime % ANIMATION_INTERVAL_MS);
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas completely for each frame
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = 'black';
+        // Redraw the entire canvas content for the current frame
+        redrawCanvasContent();
 
-        // 1. Draw all characters that have already finished animating.
-        // These characters remain fully visible on the canvas.
-        for (const completedCharData of completedCharacters) {
-            // Draw the *entire* processed path for the completed character
-            drawPath(completedCharData.processedPoints, completedCharData.xOffset);
-        }
-
-        // 2. Animate the current character.
+        // Advance frame or move to the next character
         if (currentWordCharIndex < wordToAnimate.length) {
-            const currentChar = wordToAnimate[currentWordCharIndex];
-            // Calculate the horizontal offset for the current character in the word
-            const currentXOffsetDataUnits = currentWordCharIndex * CHAR_WIDTH_DATA_UNITS;
-
-            // Prepare animation data for the current character if it's new or was skipped
-            if (processedPointsForCurrentChar.length === 0) { // Check length of the flattened array
-                const prepared = prepareAnimationForCharacter(currentChar);
-                if (!prepared) {
-                    // If data is missing for the current character (e.g., unsupported), skip to the next
-                    currentWordCharIndex++;
-                    currentFrame = 0; // Reset frame for the next char
-                    requestAnimationFrame(animate); // Request next frame to try the next char immediately
-                    return;
-                }
-            }
-
-            // Get the points for the current character's animation up to the current frame.
-            // This slice now takes from the single flattened array of points.
-            const pointsToDrawForCurrentChar = processedPointsForCurrentChar.slice(0, currentFrame + 1);
-
-            // Draw the current character's partial animation as a single continuous path
-            drawPath(pointsToDrawForCurrentChar, currentXOffsetDataUnits);
-
-            // Advance frame or move to the next character
+             // Check if the current character's animation is finished
             if (currentFrame >= totalFramesForCurrentChar - 1) {
                 // The current character's animation has just finished
-                // Add its full drawing data (the flattened points) to the `completedCharacters` array
+                // Add its full drawing data to the `completedCharacters` array
                 completedCharacters.push({
-                    char: currentChar,
-                    processedPoints: processedPointsForCurrentChar, // Store the complete flattened points for this char
-                    xOffset: currentXOffsetDataUnits
+                    char: wordToAnimate[currentWordCharIndex],
+                    processedPoints: processedPointsForCurrentChar, // Store the complete flattened points
+                    xOffset: currentWordCharIndex * CHAR_WIDTH_DATA_UNITS // Store the offset it was drawn at
                 });
 
                 currentWordCharIndex++; // Move to the next character in the word
                 currentFrame = 0; // Reset frame count for the new character
                 // Clear `processedPointsForCurrentChar` to force `prepareAnimationForCharacter`
-                // to load data for the next character in the next frame.
+                // to load data for the next character in the next frame if needed.
                 processedPointsForCurrentChar = [];
 
                 if (currentWordCharIndex < wordToAnimate.length) {
                     messageDiv.textContent = `Animating: '${wordToAnimate}' - Current char: '${wordToAnimate[currentWordCharIndex]}'`;
+                    // Prepare data for the next character immediately
+                    prepareAnimationForCharacter(wordToAnimate[currentWordCharIndex]);
                 } else {
                     messageDiv.textContent = `Animation finished: ${wordToAnimate}`;
+                    // Animation is complete
+                    animationActive = false; // Stop the animation loop
                 }
             } else {
                 currentFrame++; // Continue animating the current character by drawing the next point
             }
         } else {
-            // All characters in the word have been animated and added to `completedCharacters`.
-            // The animation loop will continue to redraw the final state of the word.
-            messageDiv.textContent = `Animation finished: ${wordToAnimate}`;
-            // If you want the animation to completely stop requesting frames after finishing:
-            // animationActive = false;
-            // return;
+             // This case should ideally not be reached if animationActive is false when finished.
+             // It's a safeguard.
+             animationActive = false;
+             messageDiv.textContent = `Animation finished: ${wordToAnimate}`;
         }
     }
 
-    requestAnimationFrame(animate); // Request the next animation frame
+    // Request the next animation frame if animation is still active
+    if (animationActive) {
+        animationFrameId = requestAnimationFrame(animate);
+    }
 }
 
 // --- Event Listener for Animation Button ---
@@ -389,29 +494,28 @@ animateButton.addEventListener('click', () => {
     const supportedCharsInInput = inputValue.split('').filter(char => CHARACTER_DRAWING_DATA.hasOwnProperty(char));
     wordToAnimate = supportedCharsInInput.join(''); // Reconstruct the word with only supported characters
 
+    // Stop any ongoing animation
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+    }
+    animationActive = false; // Ensure the flag is false
+
     if (wordToAnimate.length === 0) {
-        messageDiv.textContent = 'Please enter supported characters (A, B, C, D, E, F) to animate.';
-        animationActive = false;
+        messageDiv.textContent = 'Please enter supported characters (A-F) to animate.';
         ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
         completedCharacters = []; // Clear any previous completed chars
+        wordScaleFactor = 1; // Reset word scale
+        centerXOffsetPixels = 0; // Reset pixel offsets
+        centerYOffsetPixels = 0;
         return;
     }
 
-    // --- Dynamic Scaling Calculation ---
-    // Calculate the total width needed for the word in data units
-    const requiredDataWidth = wordToAnimate.length * CHAR_WIDTH_DATA_UNITS;
-    // The available data width in the canvas's current coordinate system
-    const canvasAvailableDataWidth = X_MAX - X_MIN;
+    // --- Calculate Scaling and Centering for the new word ---
+    // Call updateCanvasDimensions first to ensure canvas size and base scale are current
+    updateCanvasDimensions();
+    // Then calculate word-specific scaling and offset based on the word and current canvas size
+    calculateWordScalingAndOffset(wordToAnimate);
 
-    // If the required width is greater than what can fit, scale down. Add a small padding (e.g., 95%)
-    if (requiredDataWidth > canvasAvailableDataWidth) {
-        wordScaleFactor = (canvasAvailableDataWidth / requiredDataWidth) * 0.95; // Scale down, leave 5% margin
-    } else {
-        wordScaleFactor = 1; // No scaling needed if word fits
-    }
-    // You could also calculate a globalXOffset here to center shorter words if wordScaleFactor is 1.
-    // E.g., let globalXOffset = (wordScaleFactor === 1) ? (canvasAvailableDataWidth - requiredDataWidth) / 2 : 0;
-    // Then apply this globalXOffset in transformPoint.
 
     // Inform the user if any unsupported characters were entered and filtered
     const allInputChars = inputValue.split('');
@@ -426,12 +530,39 @@ animateButton.addEventListener('click', () => {
     currentWordCharIndex = 0;
     currentFrame = 0;
     processedPointsForCurrentChar = []; // Ensure data for the first char is prepared
+
+    // Prepare data for the very first character of the new word BEFORE starting animation
+    const firstChar = wordToAnimate[0];
+    if (!prepareAnimationForCharacter(firstChar)) {
+         // Handle case where the very first character is unsupported (should be filtered, but as safeguard)
+         messageDiv.textContent = `Error: Could not prepare animation for '${firstChar}'. Please use supported characters.`;
+         ctx.clearRect(0, 0, canvas.width, canvas.height);
+         completedCharacters = [];
+         wordToAnimate = ''; // Clear the word if the first char is invalid
+         wordScaleFactor = 1; // Reset scaling
+         centerXOffsetPixels = 0; // Reset pixel offsets
+         centerYOffsetPixels = 0;
+         return;
+    }
+
     completedCharacters = []; // Clear previously completed characters on the canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas before starting a new animation
 
     animationActive = true; // Activate the animation loop
-    requestAnimationFrame(animate); // Start or restart the animation loop
+    lastTimestamp = performance.now(); // Reset timestamp for smooth start
+    animationFrameId = requestAnimationFrame(animate); // Start the animation loop
 });
 
-// Initial state message when the page loads
-messageDiv.textContent = 'Enter characters (A, B, C, D, E, F) to animate.';
+// --- Resize Event Listener ---
+// Update canvas dimensions and redraw when the window is resized
+window.addEventListener('resize', () => {
+    updateCanvasDimensions();
+    // redrawCanvasContent() is called inside updateCanvasDimensions via requestAnimationFrame
+});
+
+// --- Initial Setup ---
+// Call updateCanvasDimensions once on page load to set initial size and scale
+window.onload = () => {
+    updateCanvasDimensions();
+    messageDiv.textContent = 'Enter characters (A-F) to animate.';
+};
