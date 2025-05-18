@@ -2,33 +2,49 @@ body {
     font-family: Arial, sans-serif;
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start; /* Align items to the top */
     min-height: 100vh;
     margin: 0;
-    background-color: #f0f0f0;
+    background-color: #f0f0f0; /* Page background */
     color: #333;
+    padding: 20px;
+    box-sizing: border-box;
+    width: 100%; /* Ensure body takes full width */
 }
 
 .container {
     text-align: center;
-    /* Reduced padding-bottom further */
-    padding: 20px 20px 0px 20px; /* top right bottom left - bottom reduced */
+    padding: 15px;
     border-radius: 8px;
+    width: 100%; /* Container takes full width */
+    max-width: 700px; /* Limit max width on larger screens */
+    /* --- IMPORTANT CHANGES HERE: Removed white box styling --- */
+    background-color: transparent; /* Make container background transparent */
+    box-shadow: none; /* Remove shadow */
+    border: none; /* Remove border */
+    box-sizing: border-box;
 }
 
 h1 {
     color: #0056b3;
     margin-top: 0;
-    margin-bottom: 10px; /* Slightly reduced space below heading */
+    margin-bottom: 15px;
+    font-size: 1.5em;
 }
 
 .input-section {
-    /* Reduced vertical margin */
-    margin: 10px 0; /* Reduced from 15px */
+    margin: 10px 0;
     display: flex;
-    justify-content: center;
+    flex-direction: column; /* Stack input and button on small screens */
     align-items: center;
     gap: 10px;
+}
+
+@media (min-width: 600px) { /* On screens wider than 600px, arrange side-by-side */
+    .input-section {
+        flex-direction: row;
+        justify-content: center;
+    }
 }
 
 input[type="text"] {
@@ -36,7 +52,9 @@ input[type="text"] {
     font-size: 1em;
     border: 1px solid #ccc;
     border-radius: 4px;
-    width: 200px;
+    width: 100%;
+    max-width: 250px;
+    box-sizing: border-box;
 }
 
 button {
@@ -48,6 +66,9 @@ button {
     border-radius: 4px;
     cursor: pointer;
     transition: background-color 0.3s ease;
+    width: 100%;
+    max-width: 150px;
+    box-sizing: border-box;
 }
 
 button:hover {
@@ -55,24 +76,22 @@ button:hover {
 }
 
 .message {
-    /* --- IMPORTANT CHANGE HERE --- */
-    /* Reduced margin-bottom to a minimal value */
-    margin-top: 20px;
-    margin-bottom: 0px; /* Reduced from 5px to 2px */
+    margin-bottom: 5px;
     font-size: 0.9em;
     color: #555;
     min-height: 1.2em;
 }
 
 #patternCanvas {
-    width: 600px;
-    height: 600px;
-    border: none;
-    background-color: transparent;
+    /* Canvas takes 100% width of its container */
+    width: 100%;
+    /* Height will be set by JavaScript to maintain aspect ratio */
+    height: auto;
     display: block;
-    /* --- IMPORTANT CHANGE HERE --- */
-    /* Set top margin to a very small value or 0 */
-    margin: 2px auto 0 auto; /* Added a very small 2px top margin */
-    /* You could use margin-top: 0; for the absolute minimum space */
-    /* Or margin-top: -5px; for negative space if you want overlap */
+    margin: 5px auto 0 auto;
+    border: none;
+    background-color: transparent; /* Canvas background transparent */
+    box-sizing: border-box;
+    /* Ensure canvas can grow vertically if needed by content, though JS controls height */
+    min-height: 200px; /* Minimum height to be visible initially */
 }
